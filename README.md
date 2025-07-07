@@ -248,51 +248,6 @@ python -m src.models.train_model_gan_v5 --cuda 0 --run_tag main_model
 - TensorBoard 로그: `logs/[실험번호]_[태그]_tmp_[timestamp]/`
 - 시각화 이미지: `models/[실험번호]_[태그]_tmp_[timestamp]/images/`
 
-**베이스라인 비교 (선택사항)**
-
-성능 비교를 원한다면 추가로 베이스라인 모델들을 훈련할 수 있습니다:
-
-```bash
-# 베이스라인 1: 기본 CNN
-python src/models/train_model.py --cuda 0
-
-# 베이스라인 2: CNN1D2D만 (GAN 없음)
-python src/models/train_model_1d_composed.py --cuda 0 --run_tag baseline_cnn1d2d
-```
-
-참고:
-- 베이스라인 모델들은 단순 분류만 수행 (데이터 생성 기능 없음)
-- 메인 모델(GAN v5)과 성능 비교 목적으로만 사용
-
-### 4. 결과 확인
-
-**TensorBoard로 훈련 모니터링**
-
-```bash
-# TensorBoard 실행
-tensorboard --logdir=logs
-
-# 브라우저에서 http://localhost:6006 접속
-```
-
-확인 가능한 정보:
-- 손실 함수 변화 (Generator Loss, Discriminator Loss)
-- 생성된 시계열 데이터 시각화
-- 모델 가중치 히스토그램
-- 그래디언트 분포
-
-**훈련 결과 파일**
-
-```bash
-# 모델 파일 확인
-ls models/*/weights/*.pth
-
-# 로그 파일 확인  
-ls logs/*/
-
-# 생성된 이미지 확인
-ls models/*/images/*.png
-```
 
 ## 핵심 구현 내용
 
@@ -570,9 +525,7 @@ class CNN1D2DDiscriminatorMultitask(nn.Module):
 #### 사용법
 ```bash
 # 학습 완료된 discriminator 모델 평가
-python src/models/evaluate_model_csv.py \
-  --model_path models/4_main_model/weights/199_epoch_discriminator.pth \
-  --cuda 0
+python -m src.models.evaluate_model_csv --model_path models/5_main_model/weights/199_epoch_discriminator.pth --cuda 0
 ```
 
 #### 파라미터 설명
