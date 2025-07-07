@@ -400,17 +400,9 @@ class TEPCSVDataset(Dataset):
                 # 라벨 (결함 번호)
                 fault_label = run_data['faultNumber'].iloc[0]
                 
-                # 시계열 라벨링
-                if is_test:
-                    # 테스트: 결함 발생 전 160 시점은 정상으로 라벨링
-                    time_labels = np.full(len(sensor_data), fault_label)
-                    if fault_label != 0:  # 결함이 있는 경우만
-                        time_labels[:160] = 0  # 처음 160 시점은 정상
-                else:
-                    # 훈련: 결함 발생 전 20 시점은 정상으로 라벨링  
-                    time_labels = np.full(len(sensor_data), fault_label)
-                    if fault_label != 0:  # 결함이 있는 경우만
-                        time_labels[:20] = 0  # 처음 20 시점은 정상
+                # 시계열 라벨링: CSV 파일은 전체 시뮬레이션이 해당 결함 유형
+                # 각 파일의 모든 런은 동일한 라벨을 가짐
+                time_labels = np.full(len(sensor_data), fault_label)
                 
                 self.data.append(sensor_data)
                 self.labels.append(time_labels)
@@ -433,12 +425,21 @@ class TEPCSVDataset(Dataset):
         print(f"\n클래스 분포:")
         for i in range(max(unique_labels) + 1):
             count = np.sum(unique_labels == i)
-            timesteps = expected_timesteps
+            timesteps = len(sensor_data) if is_test and len(sensor_data) == 500 else expected_timesteps
             runs = count // timesteps if timesteps > 0 else 0
             if i == 0:
                 print(f"클래스 {i} (정상): {count:,} 샘플 ({runs}개 런 × {timesteps} 시점)")
             else:
                 print(f"클래스 {i} (결함{i}): {count:,} 샘플 ({runs}개 런 × {timesteps} 시점)")
+        
+        print(f"\n라벨링 규칙:")
+        print(f"  - train_fault_0.csv → 모든 시점 라벨 0 (정상)")
+        print(f"  - train_fault_1.csv → 모든 시점 라벨 1 (결함1)")
+        print(f"  - train_fault_2.csv → 모든 시점 라벨 2 (결함2)")
+        print(f"  - ... (각 CSV 파일 = 해당 결함 유형의 순수 시뮬레이션)")
+        
+        if is_test:
+            print(f"  - 테스트: 960→500 시점 자동 변환 (모델 호환성)")
         
         # 특성 개수
         self.features_count = self.data.shape[2]  # 52개 센서

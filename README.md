@@ -228,7 +228,7 @@ data/test_faults/
 
 ```bash
 # CNN1D2D+GAN 하이브리드 모델 (메인 모델) - CSV 데이터 사용
-python src/models/train_model_gan_v5.py --cuda 0 --run_tag main_model
+python -m src.models.train_model_gan_v5 --cuda 0 --run_tag main_model
 ```
 
 이 하나의 명령으로 전체 시스템이 완성됩니다:

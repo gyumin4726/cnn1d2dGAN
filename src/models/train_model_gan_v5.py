@@ -281,7 +281,16 @@ def main(cuda, run_tag, random_seed):
                 # Visual similarity correction
                 # todo: add KL-divergence term
                 noise = torch.randn(batch_size, seq_len, noise_size, device=device)
-                noise = torch.cat((noise, fault_labels.float().unsqueeze(2)), dim=2)
+                # fault_labels의 shape를 확인하고 적절히 처리
+                if fault_labels.numel() == batch_size:
+                    # 1D 라벨인 경우 시퀀스 길이로 확장
+                    fault_labels_expanded = fault_labels.float().view(batch_size, 1, 1).expand(batch_size, seq_len, 1)
+                elif fault_labels.numel() == batch_size * seq_len:
+                    # 이미 시퀀스 길이를 포함한 경우
+                    fault_labels_expanded = fault_labels.float().view(batch_size, seq_len, 1)
+                else:
+                    raise ValueError(f"Unexpected fault_labels shape: {fault_labels.shape}")
+                noise = torch.cat((noise, fault_labels_expanded), dim=2)
 
                 state_h, state_c = netG.zero_state(batch_size)
                 state_h, state_c = state_h.to(device), state_c.to(device)
@@ -296,7 +305,7 @@ def main(cuda, run_tag, random_seed):
             for name, param in netG.named_parameters():
                 writer.add_histogram("GeneratorGradients/{}".format(name), param.grad, n_iter)
 
-            log_flag = (i + 1) % 20 == 0
+            log_flag = True
             if log_flag:
                 logger.info('[%d/%d][%d/%d] Loss_D: %.4f Loss_G: %.4f D(x): %.4f D(G(z)): %.4f / %.4f' %
                             (epoch, epochs, i, len(trainloader), errD.item(), errG.item(), D_x, D_G_z1, D_G_z2))
@@ -334,7 +343,16 @@ def main(cuda, run_tag, random_seed):
 
             batch_size, seq_len = real_inputs.size(0), real_inputs.size(1)
             noise = torch.randn(batch_size, seq_len, noise_size, device=device)
-            noise = torch.cat((noise, true_labels.float()), dim=2)
+            # true_labels의 shape를 확인하고 적절히 처리
+            if true_labels.numel() == batch_size:
+                # 1D 라벨인 경우 시퀀스 길이로 확장
+                true_labels_expanded = true_labels.float().view(batch_size, 1, 1).expand(batch_size, seq_len, 1)
+            elif true_labels.numel() == batch_size * seq_len:
+                # 이미 시퀀스 길이를 포함한 경우
+                true_labels_expanded = true_labels.float().view(batch_size, seq_len, 1)
+            else:
+                raise ValueError(f"Unexpected true_labels shape: {true_labels.shape}")
+            noise = torch.cat((noise, true_labels_expanded), dim=2)
 
             state_h, state_c = netG.zero_state(batch_size)
             state_h, state_c = state_h.to(device), state_c.to(device)
