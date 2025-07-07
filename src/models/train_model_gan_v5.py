@@ -225,7 +225,7 @@ def main(cuda, debug, run_tag, random_seed):
             # (1) Update D network: maximize log(D(x)) + log(1 - D(G(z)))
             # Real data training
             batch_size, seq_len = real_inputs.size(0), real_inputs.size(1)
-            real_target = torch.full((batch_size, seq_len, 1), REAL_LABEL, device=device)
+            real_target = torch.full((batch_size, seq_len, 1), REAL_LABEL, dtype=torch.float32, device=device)
             # for  label smoothing on [0.74, 1.0]
             # real_target = (0.74 - 1.0) - torch.rand(batch_size, seq_len, 1, device=device) + 1.0
 
@@ -251,7 +251,7 @@ def main(cuda, debug, run_tag, random_seed):
             state_h, state_c = state_h.to(device), state_c.to(device)
 
             fake_inputs = netG(noise, (state_h, state_c))
-            fake_target = torch.full((batch_size, seq_len, 1), FAKE_LABEL, device=device)
+            fake_target = torch.full((batch_size, seq_len, 1), FAKE_LABEL, dtype=torch.float32, device=device)
             # for  label smoothing on [0.0, 0.3]
             # fake_target = (0.0 - 0.3) - torch.rand(batch_size, seq_len, 1, device=device) + 0.3
             # WARNING: do not forget about detach!
