@@ -12,6 +12,7 @@ from torch.utils.data import Dataset, DataLoader
 from torchvision import transforms
 import click
 import logging
+import random
 from sklearn.metrics import classification_report, confusion_matrix, accuracy_score
 from sklearn.metrics import precision_recall_fscore_support
 import seaborn as sns
@@ -256,6 +257,8 @@ def main(model_path, csv_dir, cuda, batch_size, save_dir, random_seed):
     logger.info("Tennessee Eastman Process CSV 데이터 평가 시작")
     
     # 랜덤 시드 설정
+    logger.info(f"Random Seed: {random_seed}")
+    random.seed(random_seed)
     torch.manual_seed(random_seed)
     np.random.seed(random_seed)
     

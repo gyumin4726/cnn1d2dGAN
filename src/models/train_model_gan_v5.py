@@ -37,7 +37,7 @@ FAKE_LABEL = 0
 @click.command()
 @click.option('--cuda', required=True, type=int, default=7)
 @click.option('--run_tag', required=True, type=str, default="unknown")
-@click.option('--random_seed', required=False, type=int, default=None)
+@click.option('--random_seed', required=False, type=int, default=42)
 def main(cuda, run_tag, random_seed):
     """
     GAN v5 모델 훈련 - CSV 데이터 사용
@@ -85,12 +85,11 @@ def main(cuda, run_tag, random_seed):
             for line in f.readlines():
                 print(line, end='', file=out)
 
-    if random_seed is None:
-        random_seed = random.randint(1, 10000)
 
     logger.info(f"Random Seed: {random_seed}")
     random.seed(random_seed)
     torch.manual_seed(random_seed)
+    np.random.seed(random_seed)
     cudnn.benchmark = True
 
     # todo: add this nice syntax
