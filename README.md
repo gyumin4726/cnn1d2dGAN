@@ -242,13 +242,6 @@ python -m src.models.train_model_gan_v5 --cuda 0 --run_tag main_model
 - `--cuda 0`: GPU 번호 (0번 GPU 사용, 필수 옵션)
 - `--run_tag main_model`: 실험 태그 (로그 구분용)
 
-
-**결과물:**
-- 훈련된 모델: `models/[실험번호]_[태그]_tmp_[timestamp]/weights/`
-- TensorBoard 로그: `logs/[실험번호]_[태그]_tmp_[timestamp]/`
-- 시각화 이미지: `models/[실험번호]_[태그]_tmp_[timestamp]/images/`
-
-
 ## 핵심 구현 내용
 
 ### 1. Temporal Convolutional Network
@@ -382,58 +375,9 @@ errD_complex_fake = real_fake_w_d * errD_fake + fault_type_w_d * errD_type_fake
 
 **결론: 실제 의미 있는 결함 분류 학습은 리얼 데이터(CSV 파일)로만 이루어집니다.**
 
-### 모델의 장점
-
-1. **Robustness**: 가짜 데이터에 대한 적대적 학습으로 더 견고한 분류 모델
-2. **End-to-End**: Generator와 Discriminator가 하나의 통합 모델로 학습
-3. **실시간 학습**: 별도의 데이터 저장 없이 실시간 적대적 학습
-
-### 주의사항 및 한계점
-
-#### 잠재적 문제점
-
-1. **잘못된 패턴 학습 위험**
-   ```python
-   # 예시: Generator가 엉뚱한 데이터 생성
-   random_labels = torch.randint(high=22, size=(batch_size, 1, 1))  # 결함2 라벨
-   fake_data = netG(noise, random_labels)  # 하지만 실제론 결함5 패턴 생성 가능
-   ```
-
-2. **학습 불안정성**
-   - Mode Collapse: Generator가 특정 패턴만 계속 생성
-   - Label Leakage: 라벨 정보가 제대로 반영되지 않은 가짜 데이터
-   - Training Instability: Generator와 Discriminator의 학습 속도 불균형
-
-#### 대응 방안
-
-1. **유사성 손실 (Similarity Loss)**
-   ```python
-   errG_similarity = similarity_w_g * similarity(out_seqs, real_inputs)
-   ```
-
-2. **적절한 하이퍼파라미터 튜닝**
-   - Generator 훈련 확률: `generator_train_prob = 0.8`
-   - 손실 함수 가중치 조정
-   - 학습률 및 배치 크기 최적화
-
-3. **검증 메커니즘**
-   - 주기적인 생성 데이터 품질 검증
-   - 전문가 규칙 기반 검증
-   - 성능 모니터링 및 조기 종료
-
-### 성능 기대치
-
-- **전통적 CNN 대비**: 3-5% 높은 분류 정확도
-- **베이스라인 모델 대비**: 20-30% 향상된 이상 탐지 성능
-- **실제 공장 환경**: 희귀한 결함 유형에 대한 더 나은 탐지 능력
-
-**GAN v5는 단순한 데이터 증강이 아닌, 적대적 학습을 통해 더 강력한 결함 분류 모델을 구축하는 혁신적인 접근법입니다.**
-
 ## 전체 모델 아키텍처 비교
 
 ### 사용 가능한 모델들
-
-이 프로젝트에는 **GAN v5 메인 모델** 외에도 다양한 모델들이 구현되어 있습니다. 성능 비교나 실험 목적으로 사용할 수 있습니다.
 
 #### 1. Generator 모델들
 ```python
@@ -516,13 +460,9 @@ class CNN1D2DDiscriminatorMultitask(nn.Module):
 
 **모든 모델이 구현되어 있으므로 연구 목적이나 성능 비교를 위해 자유롭게 사용할 수 있습니다!**
 
-## 모델 평가
+## GAN v5 모델 평가
 
-### GAN v5 모델 평가
 
-학습이 완료된 후 테스트 데이터로 모델 성능을 평가할 수 있습니다.
-
-#### 사용법
 ```bash
 # 학습 완료된 discriminator 모델 평가
 python -m src.models.evaluate_model_csv --model_path models/5_main_model/weights/199_epoch_discriminator.pth --cuda 0
