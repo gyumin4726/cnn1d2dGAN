@@ -320,11 +320,3 @@ def time_series_to_plot(time_series_batch, dpi=35, titles=None):
     # 각 시계열을 matplotlib 플롯으로 변환
     # 텐서로 결합하여 TensorBoard에서 시각화 가능
 ```
-
-## 라이센스
-
-이 프로젝트는 MIT 라이센스 하에 배포됩니다.
-
-## 연락처
-
-- 저자: ildar.lomov@yandex.ru
