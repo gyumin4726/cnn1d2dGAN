@@ -12,7 +12,7 @@ from tempfile import NamedTemporaryFile, TemporaryDirectory
 from pathlib import Path
 import sys
 from argparse import Namespace
-from src.data.dataset import ToTensor, Normalize, TEPDatasetV4, InverseNormalize
+from src.data.dataset import TEPCSVDataset, CSVToTensor, CSVNormalize, InverseNormalize
 from src.models.utils import get_latest_model_id
 from src.models.recurrent_models import TEPRNN, LSTMGenerator
 from src.models.convolutional_models import (
@@ -36,12 +36,16 @@ FAKE_LABEL = 0
 
 @click.command()
 @click.option('--cuda', required=True, type=int, default=7)
-@click.option('-d', '--debug', 'debug', is_flag=True)
 @click.option('--run_tag', required=True, type=str, default="unknown")
 @click.option('--random_seed', required=False, type=int, default=None)
-def main(cuda, debug, run_tag, random_seed):
+def main(cuda, run_tag, random_seed):
     """
-    todo: write something
+    GAN v5 모델 훈련 - CSV 데이터 사용
+    
+    Args:
+        cuda: GPU 번호
+        run_tag: 실험 태그 (로그 구분용)
+        random_seed: 랜덤 시드 (옵션)
     """
     # for tensorboard logs
     try:
@@ -106,10 +110,9 @@ def main(cuda, debug, run_tag, random_seed):
     loader_jobs = 4
     window_size = 30
     bs = 128
-    tep_file_fault_free_train = "data/raw/TEP_FaultFree_Training.RData"
-    tep_file_faulty_train = "data/raw/TEP_Faulty_Training.RData"
-    tep_file_fault_free_test = "data/raw/TEP_FaultFree_Testing.RData"
-    tep_file_faulty_test = "data/raw/TEP_Faulty_Testing.RData"
+    # CSV 파일 경로 설정 (항상 CSV 사용)
+    train_csv_dir = "data/train_faults"
+    train_csv_files = [os.path.join(train_csv_dir, f"train_fault_{i}.csv") for i in range(13)]
     noise_size = 100
     conditioning_size = 1
     in_dim = noise_size + conditioning_size
@@ -124,54 +127,41 @@ def main(cuda, debug, run_tag, random_seed):
     # discriminator
     epochs = 200
 
-    if debug:
-        # WARNING: newer put 1 here for local debugging. This will destroy the PyCharm dev console.
-        loader_jobs = 0
-        bs = 2
-        epochs = 4
-        tep_file_fault_free_train = "data/raw/sampled_TEP/sampled_train.pkl"
-        tep_file_faulty_train = "data/raw/sampled_TEP/sampled_train.pkl"
-        tep_file_fault_free_test = "data/raw/sampled_TEP/sampled_test.pkl"
-        tep_file_faulty_test = "data/raw/sampled_TEP/sampled_test.pkl"
-        checkpoint_every = 1
-        generator_train_every = 1
-
     # Create writer for tensorboard
     writer = SummaryWriter(temp_model_dir_tensorboard.name)
     # todo: add all running options to some structure and print them.
     writer.add_text('Options', str("Here yo can write running options or put your ads."), 0)
 
+    # 데이터 변환 설정 (항상 CSV 사용)
     transform = transforms.Compose([
-        ToTensor(),
-        Normalize()
+        CSVToTensor(),
+        CSVNormalize()
     ])
 
     inverse_transform = InverseNormalize()
 
     logger.info("Preparing dataset...")
-    trainset = TEPDatasetV4(
-        tep_file_fault_free=tep_file_fault_free_train,
-        tep_file_faulty=tep_file_faulty_train,
-        # window_size=window_size,
-        is_test=False,
-        transform=transform
+    # 항상 CSV 파일 사용
+    trainset = TEPCSVDataset(
+        csv_files=train_csv_files,
+        transform=transform,
+        is_test=False
     )
     trainloader = torch.utils.data.DataLoader(trainset, batch_size=bs, shuffle=True, num_workers=loader_jobs,
                                               drop_last=False)
 
     logger.info("Dataset done.")
 
-    logger.info("Preparing dataset...")
-    printset = TEPDatasetV4(
-        tep_file_fault_free=tep_file_fault_free_train,
-        tep_file_faulty=tep_file_faulty_train,
-        # window_size=window_size,
-        is_test=False,
-        transform=None,
-        for_print=True
+    logger.info("Preparing print dataset...")
+    # 항상 CSV 파일 사용 (시각화용)
+    printset = TEPCSVDataset(
+        csv_files=train_csv_files,
+        transform=None,  # 정규화 없이 원본 데이터 사용
+        is_test=False
     )
+    print_batch_size = min(trainset.class_count, 21)  # 클래스 개수만큼, 최대 21개
 
-    printloader = torch.utils.data.DataLoader(printset, batch_size=trainset.class_count, shuffle=False, num_workers=1,
+    printloader = torch.utils.data.DataLoader(printset, batch_size=print_batch_size, shuffle=False, num_workers=1,
                                               drop_last=False)
 
     logger.info("Dataset done.")
@@ -306,7 +296,7 @@ def main(cuda, debug, run_tag, random_seed):
             for name, param in netG.named_parameters():
                 writer.add_histogram("GeneratorGradients/{}".format(name), param.grad, n_iter)
 
-            log_flag = True if debug else (i + 1) % 20 == 0
+            log_flag = (i + 1) % 20 == 0
             if log_flag:
                 logger.info('[%d/%d][%d/%d] Loss_D: %.4f Loss_G: %.4f D(x): %.4f D(G(z)): %.4f / %.4f' %
                             (epoch, epochs, i, len(trainloader), errD.item(), errG.item(), D_x, D_G_z1, D_G_z2))
@@ -319,15 +309,12 @@ def main(cuda, debug, run_tag, random_seed):
             writer.add_scalar('DofX_noSigmoid', D_x, n_iter)
             writer.add_scalar('DofGofz_noSigmoid', D_G_z1, n_iter)
 
-            if debug and i > 1:
-                break
-
         logger.info('Epoch %d passed' % epoch)
         # trainset.shuffle()
 
         # Saving epoch results.
         # The following images savings cost a lot of memory, reduce the frequency
-        if epoch in [0, 1, 2, 3, 5, 10, 15, 20, 30, 40, 50, *list(range(60, epochs, 30)), epochs - 1] and not debug:
+        if epoch in [0, 1, 2, 3, 5, 10, 15, 20, 30, 40, 50, *list(range(60, epochs, 30)), epochs - 1]:
             netD.eval()
             netG.eval()
 
@@ -367,7 +354,8 @@ def main(cuda, debug, run_tag, random_seed):
             torch.save(netG, os.path.join(temp_model_dir.name, "weights", f"{epoch}_epoch_generator.pth"))
             torch.save(netD, os.path.join(temp_model_dir.name, "weights", f"{epoch}_epoch_discriminator.pth"))
 
-        printset.change_print_sim_run()
+        # change_print_sim_run은 TEPDatasetV4에만 있음 (CSV 모드에서는 불필요)
+        pass
 
     logger.info(f'Finished training for {epochs} epochs.')
 

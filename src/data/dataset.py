@@ -345,3 +345,121 @@ class InverseNormalize(object):
         return {'shot': shot_original,
                 'label': label}
 
+
+class CSVToTensor(object):
+    """시계열 데이터를 위한 텐서 변환"""
+    def __call__(self, sample):
+        shot, label = sample['shot'], sample['label']
+        return {
+            'shot': torch.from_numpy(shot).float(),
+            'label': torch.from_numpy(label).long()
+        }
+
+
+class CSVNormalize(object):
+    """TEP 데이터 정규화"""
+    def __call__(self, sample):
+        shot, label = sample['shot'], sample['label']
+        shot_normed = (shot - TEP_MEAN.numpy()) / TEP_STD.numpy()
+        return {
+            'shot': shot_normed,
+            'label': label
+        }
+
+
+class TEPCSVDataset(Dataset):
+    """
+    CSV 파일로부터 TEP 데이터를 로드하는 데이터셋
+    """
+    def __init__(self, csv_files, transform=None, is_test=False):
+        """
+        Args:
+            csv_files: CSV 파일 경로 리스트
+            transform: 데이터 변환 함수
+            is_test: 테스트 모드 여부 (라벨링 규칙 변경)
+        """
+        self.transform = transform
+        self.is_test = is_test
+        self.data = []
+        self.labels = []
+        
+        for csv_file in csv_files:
+            df = pd.read_csv(csv_file)
+            
+            # 시뮬레이션 런별로 그룹화
+            for sim_run in df['simulationRun'].unique():
+                run_data = df[df['simulationRun'] == sim_run]
+                
+                # 센서 데이터만 추출 (52개 센서)
+                sensor_data = run_data.iloc[:, 3:].values  # faultNumber, simulationRun, sample 제외
+                
+                # 테스트 데이터에서 960→500 시점으로 자르기 (모델이 500 시점으로 훈련됨)
+                if is_test and sensor_data.shape[0] > 500:
+                    sensor_data = sensor_data[-500:]  # 마지막 500 시점 사용 (결함 발생 후 구간)
+                
+                # 라벨 (결함 번호)
+                fault_label = run_data['faultNumber'].iloc[0]
+                
+                # 시계열 라벨링
+                if is_test:
+                    # 테스트: 결함 발생 전 160 시점은 정상으로 라벨링
+                    time_labels = np.full(len(sensor_data), fault_label)
+                    if fault_label != 0:  # 결함이 있는 경우만
+                        time_labels[:160] = 0  # 처음 160 시점은 정상
+                else:
+                    # 훈련: 결함 발생 전 20 시점은 정상으로 라벨링  
+                    time_labels = np.full(len(sensor_data), fault_label)
+                    if fault_label != 0:  # 결함이 있는 경우만
+                        time_labels[:20] = 0  # 처음 20 시점은 정상
+                
+                self.data.append(sensor_data)
+                self.labels.append(time_labels)
+        
+        self.data = np.array(self.data)
+        self.labels = np.array(self.labels)
+        
+        # 데이터 정보 출력
+        expected_timesteps = 960 if is_test else 500
+        print(f"데이터 로드 완료: {len(self.data)}개 시뮬레이션 런")
+        print(f"데이터 형태: {self.data.shape} (예상: {len(self.data)}×{expected_timesteps}×52)")
+        print(f"라벨 형태: {self.labels.shape}")
+        
+        # 클래스 분포 확인
+        unique_labels = []
+        for label_seq in self.labels:
+            unique_labels.extend(label_seq)
+        unique_labels = np.array(unique_labels)
+        
+        print(f"\n클래스 분포:")
+        for i in range(max(unique_labels) + 1):
+            count = np.sum(unique_labels == i)
+            timesteps = expected_timesteps
+            runs = count // timesteps if timesteps > 0 else 0
+            if i == 0:
+                print(f"클래스 {i} (정상): {count:,} 샘플 ({runs}개 런 × {timesteps} 시점)")
+            else:
+                print(f"클래스 {i} (결함{i}): {count:,} 샘플 ({runs}개 런 × {timesteps} 시점)")
+        
+        # 특성 개수
+        self.features_count = self.data.shape[2]  # 52개 센서
+        self.class_count = len(np.unique(unique_labels))  # 클래스 개수
+        
+        print(f"\n데이터셋 정보:")
+        print(f"  - 특성 개수: {self.features_count}")
+        print(f"  - 클래스 개수: {self.class_count}")
+        print(f"  - 시점 수: {self.data.shape[1]}")
+    
+    def __len__(self):
+        return len(self.data)
+    
+    def __getitem__(self, idx):
+        sample = {
+            'shot': self.data[idx],
+            'label': self.labels[idx]
+        }
+        
+        if self.transform:
+            sample = self.transform(sample)
+        
+        return sample
+

@@ -185,51 +185,62 @@ pip install -e .
 
 ### 2. 데이터 준비
 
-**데이터 파일 다운로드**
+**필수: CSV 데이터 파일**
 
-Tennessee Eastman Process 데이터는 R 형식으로 제공됩니다. 다음 4개 파일이 필요합니다:
+GAN v5 모델 훈련에는 다음 CSV 파일들이 필요합니다:
+
+```bash
+# 훈련 데이터 (필수)
+data/train_faults/
+├── train_fault_0.csv  # 정상 운전 (18MB)
+├── train_fault_1.csv  # 결함 1 (18MB)
+├── train_fault_2.csv  # 결함 2 (18MB)
+├── ...
+└── train_fault_12.csv # 결함 12 (18MB)
+
+# 테스트 데이터 (평가용)
+data/test_faults/
+├── test_fault_0.csv   # 정상 운전 (34MB)
+├── test_fault_1.csv   # 결함 1 (34MB)
+├── test_fault_2.csv   # 결함 2 (34MB)
+├── ...
+└── test_fault_12.csv  # 결함 12 (34MB)
+```
+
+**CSV 파일 형식:**
+- 각 파일: 100개 시뮬레이션 런
+- 훈련: 런당 500 시점 (25시간)
+- 테스트: 런당 960 시점 (48시간) 
+- 센서: 52개 (xmeas_1~xmeas_41, xmv_1~xmv_11)
+
+**선택사항: 원본 RData 파일**
+
+기존 R 데이터 파일들도 지원됩니다 (베이스라인 비교용):
 
 - `TEP_FaultFree_Training.RData` (24MB) - 훈련용 정상 데이터
 - `TEP_Faulty_Training.RData` (471MB) - 훈련용 결함 데이터  
 - `TEP_FaultFree_Testing.RData` (45MB) - 테스트용 정상 데이터
 - `TEP_Faulty_Testing.RData` (798MB) - 테스트용 결함 데이터
 
-**데이터 파일 배치**
-
-다운로드한 데이터 파일들을 다음 위치에 배치하세요:
-
-```bash
-# 데이터 디렉토리 생성
-mkdir -p data/raw
-
-# 데이터 파일들을 data/raw/ 폴더에 복사
-# 최종 구조:
-data/raw/
-├── TEP_FaultFree_Training.RData
-├── TEP_Faulty_Training.RData
-├── TEP_FaultFree_Testing.RData
-└── TEP_Faulty_Testing.RData
-```
-
 ### 3. 모델 훈련
 
 **메인 모델 훈련 (이것만 하면 됨!)**
 
 ```bash
-# CNN1D2D+GAN 하이브리드 모델 (메인 모델)
+# CNN1D2D+GAN 하이브리드 모델 (메인 모델) - CSV 데이터 사용
 python src/models/train_model_gan_v5.py --cuda 0 --run_tag main_model
 ```
 
 이 하나의 명령으로 전체 시스템이 완성됩니다:
+- **CSV 데이터 자동 로드**: `data/train_faults/train_fault_*.csv` 파일 사용
 - 시계열 데이터 생성 (Generator)
-- 결함 분류 (21개 클래스)  
+- 결함 분류 (13개 클래스: 정상 + 12가지 결함)  
 - 정상/비정상 판별
 - 멀티태스크 학습
 
 **주요 옵션:**
 - `--cuda 0`: GPU 번호 (0번 GPU 사용, 필수 옵션)
 - `--run_tag main_model`: 실험 태그 (로그 구분용)
-- `--debug`: 디버그 모드 (샘플 데이터로 빠른 테스트)
 
 
 **결과물:**
@@ -337,7 +348,7 @@ def time_series_to_plot(time_series_batch, dpi=35, titles=None):
    - 역할: 실제/가짜 구별 + 결함 분류 (멀티태스크)
    - 입력: 시계열 데이터 (실제 또는 가짜)
    - 출력: 
-     - `type_logits`: 결함 유형 분류 (22개 클래스)
+     - `type_logits`: 결함 유형 분류 (13개 클래스: 정상 + 12가지 결함)
      - `real_fake_logits`: 실제/가짜 확률
 
 ### 훈련 과정
@@ -345,7 +356,7 @@ def time_series_to_plot(time_series_batch, dpi=35, titles=None):
 #### 1. Discriminator 훈련
 ```python
 # 실제 데이터로 훈련
-real_inputs, fault_labels = data["shot"], data["label"]  # TEP 데이터 파일에서 로드
+real_inputs, fault_labels = data["shot"], data["label"]  # CSV 파일에서 로드
 type_logits, fake_logits = netD(real_inputs, None)
 errD_type_real = cross_entropy_criterion(type_logits, fault_labels)  # 결함 분류 학습
 errD_real = binary_criterion(fake_logits, REAL_LABEL)  # 실제 데이터 판별
@@ -370,11 +381,11 @@ errG_similarity = similarity(generated_data, real_inputs)
 
 #### 실제 데이터 vs 가짜 데이터의 역할
 
-**실제 데이터 (TEP 데이터 파일)**
-- **TEP_FaultFree_Training.RData**: 정상 운전 데이터
-- **TEP_Faulty_Training.RData**: 21가지 결함 유형 데이터
+**실제 데이터 (TEP CSV 파일)**
+- **train_fault_0.csv**: 정상 운전 데이터
+- **train_fault_1~12.csv**: 12가지 결함 유형 데이터
 - **역할**: 실제 결함 분류 학습에 사용 (의미 있는 학습)
-- **라벨**: 정확한 결함 유형 라벨 (0-21)
+- **라벨**: 정확한 결함 유형 라벨 (0-12)
 
 **가짜 데이터 (Generator 생성)**
 - **생성 방식**: 랜덤 노이즈 + 랜덤 결함 라벨
@@ -414,7 +425,7 @@ errD_complex_fake = real_fake_w_d * errD_fake + fault_type_w_d * errD_type_fake
 # → 실제/가짜 구별(1.0) + 의미 없는 결함 분류(0.8)
 ```
 
-**결론: 실제 의미 있는 결함 분류 학습은 리얼 데이터(TEP 데이터 파일)로만 이루어집니다.**
+**결론: 실제 의미 있는 결함 분류 학습은 리얼 데이터(CSV 파일)로만 이루어집니다.**
 
 ### 모델의 장점
 
@@ -547,3 +558,24 @@ class CNN1D2DDiscriminatorMultitask(nn.Module):
 - **1D CNN**: 시간적 패턴 추출
 - **2D CNN**: 센서 간 상관관계 + 시간적 패턴 동시 캡처
 - **멀티태스크**: 결함 분류 + 실제/가짜 판별
+
+**모든 모델이 구현되어 있으므로 연구 목적이나 성능 비교를 위해 자유롭게 사용할 수 있습니다!**
+
+## 모델 평가
+
+### GAN v5 모델 평가
+
+학습이 완료된 후 테스트 데이터로 모델 성능을 평가할 수 있습니다.
+
+#### 사용법
+```bash
+# 학습 완료된 discriminator 모델 평가
+python src/models/evaluate_model_csv.py \
+  --model_path models/4_main_model/weights/199_epoch_discriminator.pth \
+  --cuda 0
+```
+
+#### 파라미터 설명
+- `--cuda`: 사용할 GPU 번호 (0, 1, 2, ...)
+- `--model_path`: 학습된 discriminator 모델 파일 경로
+- `--random_seed`: 랜덤 시드 (옵션)
